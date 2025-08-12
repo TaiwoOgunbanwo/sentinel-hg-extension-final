@@ -1,0 +1,39 @@
+{
+  "name": "sentinel-hg-extension-final",
+  "version": "0.1.0",
+  "description": "A privacy-preserving browser extension that uses client-side AI to detect and filter hate speech on social media platforms.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "clean": "rm -rf dist"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/TaiwoOgunbanwo/sentinel-hg-extension-final.git"
+  },
+  "keywords": [
+    "chrome-extension",
+    "hate-speech-detection",
+    "ai",
+    "privacy",
+    "content-filtering"
+  ],
+  "author": "Taiwo Ogunbanwo",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/TaiwoOgunbanwo/sentinel-hg-extension-final/issues"
+  },
+  "homepage": "https://github.com/TaiwoOgunbanwo/sentinel-hg-extension-final#readme",
+  "devDependencies": {
+    "@types/chrome": "^0.0.260",
+    "@types/react": "^18.2.55",
+    "@types/react-dom": "^18.2.19",
+    "@vitejs/plugin-react": "^4.2.1",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "typescript": "^5.3.3",
+    "vite": "^5.1.0"
+  }
+}
