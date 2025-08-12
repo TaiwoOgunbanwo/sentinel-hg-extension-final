@@ -90,7 +90,7 @@ sentinel-hg-extension-final/
 
 ## 🤝 Contributing
 
-This is a research prototype. For contributions or questions, please contact the development team.
+This is a research prototype. For contributions or questions, please contact Taiwo Ogunbanwo (taiwoogunbanwo13@gmail.com)
 
 ## 📄 License
 
