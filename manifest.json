@@ -1,0 +1,38 @@
+{
+    "manifest_version": 3,
+    "name": "Sentinel HG: Explainable Hate Speech Filter",
+    "version": "0.1.0",
+    "description": "A privacy-preserving browser extension that uses client-side AI to detect and filter hate speech.",
+    "permissions": [
+        "storage",
+        "activeTab"
+    ],
+    "background": {
+      "service_worker": "src/background.js",
+      "type": "module"
+    },
+    "content_scripts": [
+      {
+        "matches": [
+          "https://*.twitter.com/*",
+          "https://*.x.com/*",
+          "https://*.facebook.com/*",
+          "https://*.reddit.com/*"
+        ],
+        "js": ["src/content.js"]
+      }
+    ],
+    "action": {
+      "default_popup": "src/popup/popup.html"
+    },
+    "web_accessible_resources": [
+      {
+        "resources": [
+          "models/*"
+        ],
+        "matches": [
+          "<all_urls>"
+        ]
+      }
+    ]
+}
