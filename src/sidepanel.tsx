@@ -18,7 +18,32 @@ interface DetectionStats {
   }>;
 }
 
+interface FeedbackStats {
+  totalFeedback: number;
+  falsePositives: number;
+  falseNegatives: number;
+  correctClassifications: number;
+  accuracy: number;
+  recentFeedback: Array<{
+    id: string;
+    originalText: string;
+    classification: {
+      label: 'hateful' | 'normal';
+      confidence: number;
+      method: 'ai';
+    };
+    userFeedback: {
+      type: 'false_positive' | 'false_negative' | 'correct';
+      reason?: string;
+      category?: string;
+    };
+    timestamp: number;
+  }>;
+}
+
 const SidePanel: React.FC = () => {
+  console.log('SidePanel component initializing...');
+  
   const [settings, setSettings] = useState<ExtensionSettings>({
     enabled: true,
     confidence: 0.7
@@ -30,43 +55,75 @@ const SidePanel: React.FC = () => {
     recentDetections: []
   });
 
-
+  const [feedbackStats, setFeedbackStats] = useState<FeedbackStats>({
+    totalFeedback: 0,
+    falsePositives: 0,
+    falseNegatives: 0,
+    correctClassifications: 0,
+    accuracy: 0,
+    recentFeedback: []
+  });
 
   useEffect(() => {
+    console.log('SidePanel useEffect running...');
     loadSettings();
     loadStats();
+    loadFeedbackStats();
     setupMessageListener();
   }, []);
 
   const loadSettings = async () => {
     try {
+      console.log('SidePanel: Loading settings...');
       const result = await chrome.storage.sync.get(['enabled', 'confidence']);
+      console.log('SidePanel: Settings result:', result);
       setSettings({
         enabled: result.enabled ?? true,
         confidence: result.confidence ?? 0.7
       });
     } catch (error) {
-      console.error('Error loading settings:', error);
+      console.error('SidePanel: Error loading settings:', error);
     }
   };
 
   const loadStats = async () => {
     try {
+      console.log('SidePanel: Loading stats...');
       const result = await chrome.storage.local.get(['stats', 'recentDetections']);
+      console.log('SidePanel: Stats result:', result);
       setStats({
         totalDetected: result.stats?.detected ?? 0,
         totalFiltered: result.stats?.filtered ?? 0,
         recentDetections: result.recentDetections ?? []
       });
     } catch (error) {
-      console.error('Error loading stats:', error);
+      console.error('SidePanel: Error loading stats:', error);
+    }
+  };
+
+  const loadFeedbackStats = async () => {
+    try {
+      console.log('SidePanel: Loading feedback stats...');
+      const response = await chrome.runtime.sendMessage({ action: 'getFeedbackStats' });
+      console.log('SidePanel: Feedback stats response:', response);
+      if (response && response.success && response.stats) {
+        setFeedbackStats(response.stats);
+      }
+    } catch (error) {
+      console.error('SidePanel: Error loading feedback stats:', error);
     }
   };
 
   const setupMessageListener = () => {
+    console.log('SidePanel: Setting up message listener...');
     chrome.runtime.onMessage.addListener((message) => {
+      console.log('SidePanel: Received message:', message);
       if (message.action === 'statsUpdated') {
+        console.log('SidePanel: Stats updated, reloading...');
         loadStats();
+      } else if (message.action === 'feedbackUpdated') {
+        console.log('SidePanel: Feedback updated, reloading...');
+        loadFeedbackStats();
       }
     });
   };
@@ -133,6 +190,36 @@ const SidePanel: React.FC = () => {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+  };
+
+  const exportFeedbackData = async () => {
+    try {
+      const response = await chrome.runtime.sendMessage({ action: 'exportFeedback' });
+      if (response && response.success && response.data) {
+        const blob = new Blob([response.data], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `sentinel-hg-feedback-${new Date().toISOString().split('T')[0]}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
+    } catch (error) {
+      console.error('Error exporting feedback data:', error);
+    }
+  };
+
+  const clearFeedbackData = async () => {
+    if (confirm('Are you sure you want to clear all feedback data? This action cannot be undone.')) {
+      try {
+        await chrome.runtime.sendMessage({ action: 'clearFeedback' });
+        loadFeedbackStats();
+      } catch (error) {
+        console.error('Error clearing feedback data:', error);
+      }
+    }
   };
 
   const formatTime = (timestamp: number) => {
@@ -213,6 +300,46 @@ const SidePanel: React.FC = () => {
             </button>
             <button onClick={exportData} className="action-button secondary">
               Export Data
+            </button>
+          </div>
+        </section>
+
+        {/* Feedback Statistics Section */}
+        <section className="feedback-stats-section">
+          <h3>Feedback Statistics</h3>
+          
+          <div className="stats-grid">
+            <div className="stat-card">
+              <div className="stat-number">{feedbackStats.totalFeedback}</div>
+              <div className="stat-label">Total Feedback</div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-number">{Math.round(feedbackStats.accuracy * 100)}%</div>
+              <div className="stat-label">Accuracy</div>
+            </div>
+          </div>
+
+          <div className="feedback-breakdown">
+            <div className="feedback-item">
+              <span className="feedback-label">✅ Correct:</span>
+              <span className="feedback-count">{feedbackStats.correctClassifications}</span>
+            </div>
+            <div className="feedback-item">
+              <span className="feedback-label">❌ False Positives:</span>
+              <span className="feedback-count">{feedbackStats.falsePositives}</span>
+            </div>
+            <div className="feedback-item">
+              <span className="feedback-label">⚠️ False Negatives:</span>
+              <span className="feedback-count">{feedbackStats.falseNegatives}</span>
+            </div>
+          </div>
+
+          <div className="stats-actions">
+            <button onClick={exportFeedbackData} className="action-button secondary">
+              Export Feedback
+            </button>
+            <button onClick={clearFeedbackData} className="action-button secondary">
+              Clear Feedback
             </button>
           </div>
         </section>
@@ -519,6 +646,36 @@ const styles = `
     font-style: italic;
     padding: 20px;
   }
+
+  .feedback-breakdown {
+    background: #f8f9fa;
+    border-radius: 8px;
+    padding: 15px;
+    margin-bottom: 20px;
+  }
+
+  .feedback-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid #e9ecef;
+  }
+
+  .feedback-item:last-child {
+    border-bottom: none;
+  }
+
+  .feedback-label {
+    font-size: 14px;
+    color: #495057;
+  }
+
+  .feedback-count {
+    font-size: 14px;
+    font-weight: 600;
+    color: #667eea;
+  }
 `;
 
 // Inject styles
@@ -528,7 +685,13 @@ document.head.appendChild(styleSheet);
 
 // Render the side panel
 const container = document.getElementById('root');
+console.log('SidePanel: Looking for root container:', container);
 if (container) {
+  console.log('SidePanel: Root container found, creating React root...');
   const root = createRoot(container);
+  console.log('SidePanel: Rendering SidePanel component...');
   root.render(<SidePanel />);
+  console.log('SidePanel: Component rendered successfully');
+} else {
+  console.error('SidePanel: Root container not found!');
 } 

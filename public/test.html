@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sentinel HG Test Page</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .test-content {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .hateful {
+            background-color: #ffe6e6;
+        }
+        .normal {
+            background-color: #e6ffe6;
+        }
+    </style>
+</head>
+<body>
+    <h1>Sentinel HG Extension Test Page</h1>
+    <p>This page contains test content to verify the extension is working correctly.</p>
+
+    <div class="test-content">
+        <h3>Test Content 1 (Should be detected as hateful)</h3>
+        <p>This is some terrible content that contains hate speech. I really hate this and think it's awful. The person who wrote this is an idiot and should be ashamed.</p>
+        <p>This paragraph should remain normal and readable. It doesn't contain any hate speech keywords.</p>
+    </div>
+
+    <div class="test-content">
+        <h3>Test Content 2 (Should be normal)</h3>
+        <p>This is some normal content that should not be flagged. It's just regular text about everyday things. Nothing offensive here.</p>
+        <p>Another normal paragraph with regular content. No problematic language in this section.</p>
+    </div>
+
+    <div class="test-content">
+        <h3>Test Content 3 (Should be detected as hateful)</h3>
+        <p>Another piece of disgusting content with vile language. This is worthless trash that nobody should read. The author is a moron.</p>
+        <p>This is a normal paragraph mixed with the hateful content above. It should remain readable.</p>
+    </div>
+
+    <div class="test-content">
+        <h3>Test Content 4 (Should be normal)</h3>
+        <p>More normal content here. Just regular text that should pass through without any issues. No problematic language.</p>
+        <p>Final paragraph with completely normal content. Everything here should be perfectly readable.</p>
+    </div>
+
+    <div class="test-content">
+        <h3>Instructions</h3>
+        <p>1. Load the extension in Chrome</p>
+        <p>2. Enable the extension using the popup</p>
+        <p>3. Refresh this page</p>
+        <p>4. Check if hateful content is blurred</p>
+        <p>5. Open the side panel to see statistics</p>
+        <p>6. Check the browser console for debug messages</p>
+    </div>
+</body>
+</html> 

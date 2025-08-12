@@ -1,9 +1,12 @@
 // Background service worker for Sentinel HG extension
 import { pipeline } from '@xenova/transformers';
+import { DEFAULT_MODEL, MODEL_LOADING_OPTIONS, preprocessText, HATE_SPEECH_MODELS, type ModelConfig } from './model-config';
+import { FeedbackManager } from './feedback';
 
 interface ExtensionSettings {
   enabled: boolean;
   confidence: number;
+  selectedModel: string;
 }
 
 interface ClassificationResult {
@@ -11,7 +14,7 @@ interface ClassificationResult {
   confidence: number;
   keywords: string[];
   explanation: string;
-  method: 'ai' | 'keyword';
+  method: 'ai';
 }
 
 interface ClassificationRequest {
@@ -31,7 +34,8 @@ interface ClassificationResponse {
 class BackgroundServiceWorker {
   private settings: ExtensionSettings = {
     enabled: true,
-    confidence: 0.7
+    confidence: 0.7,
+    selectedModel: DEFAULT_MODEL.modelId
   };
 
   private classifier: any = null;
@@ -51,9 +55,10 @@ class BackgroundServiceWorker {
 
   private async loadSettings(): Promise<void> {
     try {
-      const result = await chrome.storage.sync.get(['enabled', 'confidence']);
+      const result = await chrome.storage.sync.get(['enabled', 'confidence', 'selectedModel']);
       this.settings.enabled = result.enabled ?? true;
       this.settings.confidence = result.confidence ?? 0.7;
+      this.settings.selectedModel = result.selectedModel ?? DEFAULT_MODEL.modelId;
     } catch (error) {
       console.error('Error loading settings:', error);
     }
@@ -63,19 +68,25 @@ class BackgroundServiceWorker {
     if (this.isModelLoading || this.isModelLoaded) return;
 
     this.isModelLoading = true;
-    console.log('Loading AI model...');
+    console.log('Loading AI model for hate speech detection...');
 
     try {
-      // Load a pre-trained model for text classification
-      // Using a smaller model for better performance in browser
-      const modelName = 'Xenova/distilbert-base-uncased-finetuned-sst-2-english';
+      const modelName = this.settings.selectedModel;
+      console.log('Loading AI model:', modelName);
       
-      this.classifier = await pipeline('sentiment-analysis', modelName);
+      this.classifier = await pipeline('text-classification', modelName, {
+        ...MODEL_LOADING_OPTIONS,
+        progress_callback: (progress: number) => {
+          console.log(`AI model loading progress: ${Math.round(progress * 100)}%`);
+        }
+      });
+      
       this.isModelLoaded = true;
-      console.log('AI model loaded successfully');
+      console.log('AI model loaded successfully - ready for hate speech detection');
     } catch (error) {
       console.error('Error loading AI model:', error);
-      console.log('Falling back to keyword-based detection');
+      console.log('AI model failed to load - extension will use default classification');
+      this.isModelLoaded = false;
     } finally {
       this.isModelLoading = false;
     }
@@ -93,27 +104,53 @@ class BackgroundServiceWorker {
     _sender: chrome.runtime.MessageSender,
     sendResponse: (response: any) => void
   ): Promise<void> {
+    console.log('Background: Received message:', message);
     try {
       switch (message.action) {
         case 'classifyText':
+          console.log('Background: Handling classifyText request');
           await this.handleClassificationRequest(message, sendResponse);
           break;
         case 'updateSettings':
+          console.log('Background: Handling updateSettings request');
           await this.handleSettingsUpdate(message, sendResponse);
           break;
         case 'getSettings':
+          console.log('Background: Handling getSettings request');
           sendResponse({ settings: this.settings });
           break;
         case 'clearStats':
+          console.log('Background: Handling clearStats request');
           await this.clearStats();
           sendResponse({ success: true });
           break;
+        case 'openSidePanel':
+          console.log('Background: Handling openSidePanel request');
+          this.openSidePanel();
+          sendResponse({ success: true });
+          break;
+        case 'submitFeedback':
+          console.log('Background: Handling submitFeedback request');
+          await this.handleFeedbackSubmission(message, sendResponse);
+          break;
+        case 'getFeedbackStats':
+          console.log('Background: Handling getFeedbackStats request');
+          await this.handleGetFeedbackStats(sendResponse);
+          break;
+        case 'exportFeedback':
+          console.log('Background: Handling exportFeedback request');
+          await this.handleExportFeedback(sendResponse);
+          break;
+        case 'clearFeedback':
+          console.log('Background: Handling clearFeedback request');
+          await this.handleClearFeedback(sendResponse);
+          break;
         default:
-          console.log('Unknown message action:', message.action);
+          console.log('Background: Unknown message action:', message.action);
           sendResponse({ success: false, error: 'Unknown action' });
       }
     } catch (error) {
-      console.error('Error handling message:', error);
+      console.error('Background: Error handling message:', error);
       sendResponse({ success: false, error: error instanceof Error ? error.message : 'Unknown error' });
     }
   }
@@ -122,9 +159,11 @@ class BackgroundServiceWorker {
     message: ClassificationRequest,
     sendResponse: (response: ClassificationResponse) => void
   ): Promise<void> {
+    console.log('Background: Received classification request:', message);
     const { text, elementId } = message;
     
     if (!text || typeof text !== 'string') {
+      console.error('Background: Invalid text provided:', text);
       sendResponse({
         success: false,
         error: 'Invalid text provided',
@@ -133,21 +172,35 @@ class BackgroundServiceWorker {
       return;
     }
 
-    console.log('Classifying text:', text.substring(0, 100) + '...');
+    console.log('Background: Classifying text:', text.substring(0, 100) + '...', 'for element:', elementId);
     
-    const classification = await this.classifyText(text);
-    
-    // Store detection for side panel
-    if (classification.label === 'hateful') {
-      await this.storeDetection(text, classification);
+    try {
+      const classification = await this.classifyText(text);
+      
+      console.log('Background: Classification result:', classification);
+      
+      // Store detection for side panel
+      if (classification.label === 'hateful') {
+        await this.storeDetection(text, classification);
+      }
+      
+      const response = {
+        success: true,
+        classification,
+        elementId,
+        originalText: text
+      };
+      
+      console.log('Background: Sending response:', response);
+      sendResponse(response);
+    } catch (error) {
+      console.error('Background: Error in classification:', error);
+      sendResponse({
+        success: false,
+        error: error instanceof Error ? error.message : 'Classification failed',
+        elementId
+      });
     }
-    
-    sendResponse({
-      success: true,
-      classification,
-      elementId,
-      originalText: text
-    });
   }
 
   private async handleSettingsUpdate(
@@ -160,7 +213,7 @@ class BackgroundServiceWorker {
   }
 
   private async classifyText(text: string): Promise<ClassificationResult> {
-    // Try AI classification first
+    // Use AI classification only
     if (this.isModelLoaded && this.classifier) {
       try {
         const aiResult = await this.classifyWithAI(text);
@@ -172,38 +225,93 @@ class BackgroundServiceWorker {
       }
     }
 
-    // Fallback to keyword-based classification
-    return this.classifyWithKeywords(text);
+    // If AI model is not available, return a default result
+    console.warn('AI model not available, returning default classification');
+    return {
+      label: 'normal',
+      confidence: 0.5,
+      keywords: [],
+      explanation: 'AI model not available - defaulting to normal classification',
+      method: 'ai'
+    };
   }
 
   private async classifyWithAI(text: string): Promise<ClassificationResult | null> {
     try {
-      const result = await this.classifier(text);
+      // Preprocess the text for AI analysis
+      const processedText = preprocessText(text);
+      console.log('AI: Analyzing text for hate speech:', processedText.substring(0, 100) + '...');
       
-      // The model returns sentiment analysis, we need to interpret it for hate speech
-      // For now, we'll use negative sentiment as a proxy for potential hate speech
-      // In a real implementation, you'd use a specifically trained hate speech model
+      const result = await this.classifier(processedText);
+      console.log('AI: Classification result:', result);
       
-      const confidence = result[0]?.score || 0;
-      const label = result[0]?.label || 'NEGATIVE';
+      // Get the current model configuration
+      const modelConfig = this.getCurrentModelConfig();
       
-      // Convert sentiment to hate speech classification
-      // This is a simplified approach - in production, use a dedicated hate speech model
-      if (label === 'NEGATIVE' && confidence >= this.settings.confidence) {
+      let maxConfidence = 0;
+      let detectedLabel = 'normal';
+      let isHateful = false;
+      
+      // Process all classification results
+      if (Array.isArray(result)) {
+        for (const classification of result) {
+          const label = classification.label?.toLowerCase() || '';
+          const confidence = classification.score || 0;
+          
+          console.log('AI: Processing classification:', { label, confidence });
+          
+          // Check if this is a hate speech label
+          if (modelConfig.labels.hateful.some(hateLabel => label.includes(hateLabel))) {
+            if (confidence > maxConfidence) {
+              maxConfidence = confidence;
+              detectedLabel = label;
+              isHateful = true;
+            }
+          }
+          
+          // Check if this is a normal label
+          if (modelConfig.labels.normal.some(normalLabel => label.includes(normalLabel))) {
+            if (confidence > maxConfidence && !isHateful) {
+              maxConfidence = confidence;
+              detectedLabel = label;
+              isHateful = false;
+            }
+          }
+        }
+      } else if (result && typeof result === 'object') {
+        // Handle single result object
+        const label = result.label?.toLowerCase() || '';
+        const confidence = result.score || 0;
+        
+        if (modelConfig.labels.hateful.some(hateLabel => label.includes(hateLabel))) {
+          isHateful = true;
+          maxConfidence = confidence;
+          detectedLabel = label;
+        } else {
+          isHateful = false;
+          maxConfidence = confidence;
+          detectedLabel = label;
+        }
+      }
+      
+      console.log('AI: Final classification:', { isHateful, detectedLabel, maxConfidence });
+      
+      // Determine if the content should be classified as hateful
+      if (isHateful && maxConfidence >= this.settings.confidence) {
         return {
           label: 'hateful',
-          confidence: Math.min(0.95, confidence + 0.1), // Boost confidence slightly
-          keywords: this.extractKeywords(text),
-          explanation: `AI detected negative sentiment with ${Math.round(confidence * 100)}% confidence`,
+          confidence: Math.min(0.95, maxConfidence),
+          keywords: this.extractKeywords(processedText),
+          explanation: `AI model detected ${detectedLabel} content with ${Math.round(maxConfidence * 100)}% confidence using ${modelConfig.name}`,
           method: 'ai'
         };
       }
       
       return {
         label: 'normal',
-        confidence: 0.8,
+        confidence: Math.max(0.5, maxConfidence),
         keywords: [],
-        explanation: 'AI classified as normal content',
+        explanation: `AI model classified as ${detectedLabel} content with ${Math.round(maxConfidence * 100)}% confidence using ${modelConfig.name}`,
         method: 'ai'
       };
     } catch (error) {
@@ -212,53 +320,36 @@ class BackgroundServiceWorker {
     }
   }
 
-  private classifyWithKeywords(text: string): ClassificationResult {
-    // Simple keyword-based classification
-    const hateKeywords = [
-      'idiot', 'stupid', 'hate', 'awful', 'terrible', 'horrible',
-      'disgusting', 'vile', 'scum', 'trash', 'worthless', 'useless',
-      'dumb', 'moron', 'retard', 'fool', 'imbecile', 'cretin'
-    ];
-
-    const lowerText = text.toLowerCase();
-    const foundKeywords = hateKeywords.filter(keyword => 
-      lowerText.includes(keyword)
-    );
-
-    if (foundKeywords.length > 0) {
-      const confidence = Math.min(0.95, 0.5 + (foundKeywords.length * 0.1));
-      
-      // Only classify as hateful if confidence meets threshold
-      if (confidence >= this.settings.confidence) {
-        return {
-          label: 'hateful',
-          confidence,
-          keywords: foundKeywords,
-          explanation: `Detected hate speech keywords: ${foundKeywords.join(', ')}`,
-          method: 'keyword'
-        };
-      }
-    }
-
-    return {
-      label: 'normal',
-      confidence: 0.8,
-      keywords: [],
-      explanation: 'No hate speech keywords detected',
-      method: 'keyword'
-    };
-  }
-
   private extractKeywords(text: string): string[] {
-    // Simple keyword extraction for AI results
-    const hateKeywords = [
-      'idiot', 'stupid', 'hate', 'awful', 'terrible', 'horrible',
-      'disgusting', 'vile', 'scum', 'trash', 'worthless', 'useless',
-      'dumb', 'moron', 'retard', 'fool', 'imbecile', 'cretin'
-    ];
-
-    const lowerText = text.toLowerCase();
-    return hateKeywords.filter(keyword => lowerText.includes(keyword));
+    // AI-based keyword extraction - focus on contextual analysis
+    // This method extracts keywords that are most relevant to the AI classification
+    
+    const words = text.toLowerCase().split(/\s+/);
+    const wordCount = new Map<string, number>();
+    
+    // Count word frequency and filter out common words
+    const commonWords = new Set([
+      'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by',
+      'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did',
+      'will', 'would', 'could', 'should', 'may', 'might', 'can', 'this', 'that', 'these', 'those',
+      'i', 'you', 'he', 'she', 'it', 'we', 'they', 'me', 'him', 'her', 'us', 'them',
+      'my', 'your', 'his', 'her', 'its', 'our', 'their', 'mine', 'yours', 'hers', 'ours', 'theirs'
+    ]);
+    
+    words.forEach(word => {
+      const cleanWord = word.replace(/[^\w]/g, '');
+      if (cleanWord.length > 3 && !commonWords.has(cleanWord)) {
+        wordCount.set(cleanWord, (wordCount.get(cleanWord) || 0) + 1);
+      }
+    });
+    
+    // Return the most frequent words (up to 5)
+    const sortedWords = Array.from(wordCount.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([word]) => word);
+    
+    return sortedWords;
   }
 
   private async storeDetection(text: string, classification: ClassificationResult): Promise<void> {
@@ -310,14 +401,88 @@ class BackgroundServiceWorker {
     }
   }
 
+  private openSidePanel(): void {
+    try {
+      // Try to open side panel using available APIs
+      if (chrome.sidePanel && chrome.sidePanel.setPanelBehavior) {
+        chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
+      }
+      console.log('Side panel opening requested');
+    } catch (error) {
+      console.error('Error opening side panel:', error);
+    }
+  }
+
   private async saveSettings(): Promise<void> {
     try {
       await chrome.storage.sync.set({
         enabled: this.settings.enabled,
-        confidence: this.settings.confidence
+        confidence: this.settings.confidence,
+        selectedModel: this.settings.selectedModel
       });
     } catch (error) {
       console.error('Error saving settings:', error);
+    }
+  }
+
+  private getCurrentModelConfig(): ModelConfig {
+    // Find the current model configuration
+    return HATE_SPEECH_MODELS.find(model => model.modelId === this.settings.selectedModel) || DEFAULT_MODEL;
+  }
+
+  private async handleClearFeedback(sendResponse: (response: any) => void): Promise<void> {
+    try {
+      const feedbackManager = FeedbackManager.getInstance();
+      await feedbackManager.clearFeedback();
+      sendResponse({ success: true });
+    } catch (error) {
+      console.error('Background: Error clearing feedback:', error);
+      sendResponse({ success: false, error: error instanceof Error ? error.message : 'Failed to clear feedback' });
+    }
+  }
+
+  private async handleExportFeedback(sendResponse: (response: any) => void): Promise<void> {
+    try {
+      const feedbackManager = FeedbackManager.getInstance();
+      const exportData = await feedbackManager.exportFeedback();
+      sendResponse({ success: true, data: exportData });
+    } catch (error) {
+      console.error('Background: Error exporting feedback:', error);
+      sendResponse({ success: false, error: error instanceof Error ? error.message : 'Failed to export feedback' });
+    }
+  }
+
+  private async handleGetFeedbackStats(sendResponse: (response: any) => void): Promise<void> {
+    try {
+      const feedbackManager = FeedbackManager.getInstance();
+      const stats = await feedbackManager.getFeedbackStats();
+      sendResponse({ success: true, stats });
+    } catch (error) {
+      console.error('Background: Error getting feedback stats:', error);
+      sendResponse({ success: false, error: error instanceof Error ? error.message : 'Failed to get feedback stats' });
+    }
+  }
+
+  private async handleFeedbackSubmission(message: any, sendResponse: (response: any) => void): Promise<void> {
+    try {
+      const feedbackManager = FeedbackManager.getInstance();
+      
+      // Update metadata with current settings
+      const feedbackData = {
+        ...message.feedback,
+        metadata: {
+          ...message.feedback.metadata,
+          modelUsed: this.settings.selectedModel,
+          confidenceThreshold: this.settings.confidence,
+          extensionVersion: '0.1.0'
+        }
+      };
+      
+      await feedbackManager.submitFeedback(feedbackData);
+      sendResponse({ success: true });
+    } catch (error) {
+      console.error('Background: Error submitting feedback:', error);
+      sendResponse({ success: false, error: error instanceof Error ? error.message : 'Failed to submit feedback' });
     }
   }
 }

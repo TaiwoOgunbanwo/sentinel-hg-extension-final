@@ -53,8 +53,26 @@ const Popup: React.FC = () => {
   };
 
   const openSidePanel = () => {
-    if (chrome.sidePanel) {
-      chrome.sidePanel.open({ windowId: chrome.windows.WINDOW_ID_CURRENT });
+    // Try multiple methods to open side panel
+    try {
+      // Method 1: Direct API call
+      if (chrome.sidePanel && chrome.sidePanel.setPanelBehavior) {
+        chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
+      }
+      
+      // Method 2: Send message to background script
+      chrome.runtime.sendMessage({ action: 'openSidePanel' });
+      
+      // Method 3: Try to open programmatically
+      if (chrome.sidePanel && chrome.sidePanel.open) {
+        chrome.sidePanel.open({ windowId: chrome.windows.WINDOW_ID_CURRENT });
+      }
+      
+      console.log('Side panel opening requested');
+    } catch (error) {
+      console.error('Error opening side panel:', error);
+      // Fallback: show instructions to user
+      alert('Please manually open the side panel by right-clicking the extension icon and selecting "Open side panel"');
     }
   };
 
