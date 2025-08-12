@@ -5,7 +5,8 @@
   "description": "A privacy-preserving browser extension that uses client-side AI to detect and filter hate speech.",
   "permissions": [
     "storage",
-    "activeTab"
+    "activeTab",
+    "sidePanel"
   ],
   "host_permissions": [
     "https://*/*",
@@ -28,6 +29,9 @@
   ],
   "action": {
     "default_popup": "popup.html"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
   },
   "web_accessible_resources": [
     {

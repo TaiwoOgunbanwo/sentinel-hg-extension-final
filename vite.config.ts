@@ -5,7 +5,7 @@ import { copyFileSync, mkdirSync, readdirSync, statSync } from 'fs'
 import { join } from 'path'
 
 // Plugin to copy models directory
-function copyModelsPlugin() {
+const copyModelsPlugin = () => {
   return {
     name: 'copy-models',
     writeBundle() {
@@ -15,7 +15,7 @@ function copyModelsPlugin() {
       if (statSync(modelsDir).isDirectory()) {
         mkdirSync(distModelsDir, { recursive: true })
         
-        function copyDir(src: string, dest: string) {
+        const copyDir = (src: string, dest: string) => {
           const entries = readdirSync(src, { withFileTypes: true })
           
           for (const entry of entries) {
@@ -47,6 +47,7 @@ export default defineConfig({
         background: resolve(__dirname, 'src/background.ts'),
         content: resolve(__dirname, 'src/content.ts'),
         popup: resolve(__dirname, 'src/popup.tsx'),
+        sidepanel: resolve(__dirname, 'src/sidepanel.tsx'),
       },
       output: {
         entryFileNames: '[name].js',

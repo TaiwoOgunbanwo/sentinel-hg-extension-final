@@ -4,6 +4,7 @@ interface ClassificationResult {
   confidence: number;
   keywords: string[];
   explanation: string;
+  method: 'ai' | 'keyword';
 }
 
 interface ClassificationResponse {
@@ -235,7 +236,7 @@ class ContentScript {
       cursor: pointer;
     `;
     warningIndicator.textContent = '!';
-    warningIndicator.title = `Hate speech detected (${Math.round(classification.confidence * 100)}% confidence)`;
+            warningIndicator.title = `Hate speech detected (${Math.round(classification.confidence * 100)}% confidence) - ${classification.method.toUpperCase()}`;
     
     // Add click handler to show explanation
     warningIndicator.addEventListener('click', (e) => {
@@ -264,12 +265,13 @@ class ContentScript {
       box-shadow: 0 2px 10px rgba(0,0,0,0.3);
     `;
     
-    popup.innerHTML = `
-      <strong>Hate Speech Detected</strong><br>
-      Confidence: ${Math.round(classification.confidence * 100)}%<br>
-      Keywords: ${classification.keywords.join(', ')}<br>
-      <small>${classification.explanation}</small>
-    `;
+            popup.innerHTML = `
+            <strong>Hate Speech Detected</strong><br>
+            Method: ${classification.method.toUpperCase()}<br>
+            Confidence: ${Math.round(classification.confidence * 100)}%<br>
+            Keywords: ${classification.keywords.join(', ')}<br>
+            <small>${classification.explanation}</small>
+        `;
     
     element.appendChild(popup);
     

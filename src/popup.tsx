@@ -52,6 +52,12 @@ const Popup: React.FC = () => {
     saveSettings({ confidence });
   };
 
+  const openSidePanel = () => {
+    if (chrome.sidePanel) {
+      chrome.sidePanel.open({ windowId: chrome.windows.WINDOW_ID_CURRENT });
+    }
+  };
+
   return (
     <div className="popup-container">
       <header className="popup-header">
@@ -94,6 +100,12 @@ const Popup: React.FC = () => {
             <span>50%</span>
             <span>95%</span>
           </div>
+        </div>
+
+        <div className="sidepanel-section">
+          <button onClick={openSidePanel} className="sidepanel-button">
+            Open Side Panel
+          </button>
         </div>
       </main>
     </div>
@@ -269,6 +281,29 @@ const styles = `
     justify-content: space-between;
     font-size: 12px;
     color: #6c757d;
+  }
+
+  .sidepanel-section {
+    margin-top: 20px;
+    padding-top: 20px;
+    border-top: 1px solid #e9ecef;
+  }
+
+  .sidepanel-button {
+    width: 100%;
+    padding: 12px;
+    background: #667eea;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+  }
+
+  .sidepanel-button:hover {
+    background: #5a67d8;
   }
 `;
 
