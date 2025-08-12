@@ -102,4 +102,4 @@ This project is part of academic research. All rights reserved.
 
 ---
 
-*Sentinel HG: Protecting users from hate speech, one post at a time.* 
+*Sentinel HG: Protecting users from hate speech, one post at a time.*
